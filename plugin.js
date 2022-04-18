@@ -71,6 +71,36 @@ module.exports = {
               throw err;
             }
           });
+        } else if (event === 'scheduled') {
+          return this.addEventListener('scheduled', (event) => {
+            const bugsnagClient = clone(client);
+            try {
+              const customEvent = {
+                bugsnag: bugsnagClient,
+                waitUntil: (promise) => {
+                  event.waitUntil((async () => {
+                    try {
+                      return await promise;
+                    } catch (err) {
+                      bugsnagClient.notify(createReportFromErr(err, handledState));
+                      throw err;
+                    } finally {
+                      await bugsnagClient._waitForTasks();
+                    }
+                  })());
+                },
+              };
+              Object.keys(event).forEach((eventKey) => {
+                customEvent[eventKey] = event[eventKey];
+              });
+              Object.setPrototypeOf(customEvent, event);
+              handler(customEvent);
+            } catch (err) {
+              bugsnagClient.notify(createReportFromErr(err, handledState));
+              event.waitUntil(bugsnagClient._waitForTasks());
+              throw err;
+            }
+          })
         } else {
           return addEventListener(event, handler, ...args);
         }
